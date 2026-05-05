@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""Interactive list picker with optional inline textbox.
+
+Usage:
+    picker [--header TEXT] [--custom] [--custom-label TEXT]
+           [--default N] [--marker STR] [ITEM ...]
+
+If no ITEMs are given, picker reads them from stdin (one per line).
+With --custom, an extra entry is appended; selecting it turns that line
+into an editable text field, Enter returns the typed value.
+
+Output:
+    Prints the selection (or typed value) to stdout. Exits 130 on cancel.
+"""
+
+import argparse
+import curses
+import os
+import sys
+
+
+def render(stdscr, header, items, selected, custom_idx, editing, buf, marker):
+    stdscr.erase()
+    h, w = stdscr.getmaxyx()
+    row = 0
+
+    if header:
+        for line in header.split("\n"):
+            try:
+                stdscr.addnstr(row, 0, line, w - 1, curses.A_BOLD)
+            except curses.error:
+                pass
+            row += 1
+        row += 1
+
+    pad = " " * len(marker)
+    cursor_pos = None
+
+    for i, item in enumerate(items):
+        is_sel = (i == selected)
+        prefix = marker if is_sel else pad
+        text = buf if (i == custom_idx and editing) else item
+        line = prefix + text
+        attr = curses.A_BOLD if is_sel else 0
+        try:
+            stdscr.addnstr(row, 0, line, w - 1, attr)
+        except curses.error:
+            pass
+        if i == custom_idx and editing:
+            cursor_pos = (row, min(len(prefix) + len(buf), w - 1))
+        row += 1
+
+    if cursor_pos:
+        try:
+            stdscr.move(*cursor_pos)
+            curses.curs_set(1)
+        except curses.error:
+            pass
+    else:
+        try:
+            curses.curs_set(0)
+        except curses.error:
+            pass
+
+    stdscr.refresh()
+
+
+def picker_loop(stdscr, header, items, custom_idx, default, marker):
+    stdscr.keypad(True)
+    selected = default
+    editing = False
+    buf = ""
+
+    while True:
+        render(stdscr, header, items, selected, custom_idx, editing, buf, marker)
+        ch = stdscr.getch()
+
+        if editing:
+            if ch in (curses.KEY_ENTER, 10, 13):
+                if buf.strip():
+                    return buf
+                editing = False
+                buf = ""
+            elif ch == 27:
+                editing = False
+                buf = ""
+            elif ch in (curses.KEY_BACKSPACE, 127, 8):
+                buf = buf[:-1]
+            elif ch == curses.KEY_RESIZE:
+                continue
+            elif 32 <= ch < 127:
+                buf += chr(ch)
+        else:
+            if ch in (curses.KEY_UP, ord("k")):
+                selected = (selected - 1) % len(items)
+            elif ch in (curses.KEY_DOWN, ord("j")):
+                selected = (selected + 1) % len(items)
+            elif ch in (curses.KEY_ENTER, 10, 13):
+                if selected == custom_idx:
+                    editing = True
+                    buf = ""
+                else:
+                    return items[selected]
+            elif ch in (3, 27):
+                return None
+            elif ch == curses.KEY_RESIZE:
+                continue
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Interactive list picker with optional inline textbox."
+    )
+    parser.add_argument("--header", default="", help="Header text shown above the list")
+    parser.add_argument(
+        "--custom",
+        action="store_true",
+        help="Append a 'type your own' entry that expands to a textbox",
+    )
+    parser.add_argument(
+        "--custom-label",
+        default="Type a new name...",
+        help="Label for the custom-input entry",
+    )
+    parser.add_argument(
+        "--default",
+        type=int,
+        default=0,
+        help="Index (0-based) of the option highlighted at start",
+    )
+    parser.add_argument(
+        "--marker",
+        default="> ",
+        help="Marker shown next to the selected line",
+    )
+    parser.add_argument(
+        "items",
+        nargs="*",
+        help="List items (one per arg). If empty, items are read from stdin.",
+    )
+    args = parser.parse_args()
+
+    items = list(args.items)
+    if not items and not sys.stdin.isatty():
+        items = [line.rstrip("\n") for line in sys.stdin if line.strip()]
+
+    if args.custom:
+        items.append(args.custom_label)
+
+    if not items:
+        sys.stderr.write("picker: no options provided\n")
+        sys.exit(2)
+
+    custom_idx = len(items) - 1 if args.custom else -1
+    default = max(0, min(args.default, len(items) - 1))
+
+    real_stdout_fd = os.dup(1)
+    try:
+        tty_fd = os.open("/dev/tty", os.O_RDWR)
+    except OSError:
+        sys.stderr.write("picker: no controlling terminal\n")
+        sys.exit(2)
+    os.dup2(tty_fd, 0)
+    os.dup2(tty_fd, 1)
+    os.close(tty_fd)
+
+    try:
+        result = curses.wrapper(
+            picker_loop, args.header, items, custom_idx, default, args.marker
+        )
+    finally:
+        os.dup2(real_stdout_fd, 1)
+        os.close(real_stdout_fd)
+
+    if result is None:
+        sys.exit(130)
+    print(result)
+
+
+if __name__ == "__main__":
+    main()

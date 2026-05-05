@@ -1,72 +1,52 @@
 - Project Status
-    - Last Updated: YYYY-MM-DD
-    - Development Mode: [Claude Code | Manual | Hybrid]
-    - Stage: Initial Setup
-    - Next Milestone: [Description of next goal]
+    - Last Updated: 2026-05-05
+    - Development Mode: Claude Code
+    - Stage: POC
+    - Next Milestone: dogfood from note.sh, fix any UX rough edges
 
 - Development Stages
     - [x] Initial Setup
-        - Created: YYYY-MM-DD
+        - Created: 2026-05-05
         - Repository initialized
         - Basic structure in place
         - Template copied from claude_code_project_template
-    - [] Proof of Concept (POC)
-        - Target: YYYY-MM-DD
-        - Goal: Validate core concept and technology choices
+    - [x] Proof of Concept (POC)
+        - Target: 2026-05-05
+        - Goal: validate that a curses-based shell picker can match the Claude Code AskUserQuestion UX
         - Success criteria:
-            - [] Key feature X works
-            - [] Technology stack validated
-            - [] Basic end-to-end flow demonstrated
+            - [x] arrow key navigation
+            - [x] inline textbox for custom input
+            - [x] callable from shell as selection=$(picker ...)
     - [] Minimum Viable Product (MVP)
-        - Goal: First usable version with core features
+        - Goal: drop-in replacement for fzf-as-list-picker in personal shell scripts
         - Core features:
-            - [] Feature A
-            - [] Feature B
-            - [] Feature C
+            - [x] picker reads items from args or stdin
+            - [x] --custom flag adds an inline textbox option
+            - [] used in note.sh end-to-end
+            - [] header supports color or theming
         - Known issues:
-            - [List bugs that block demo/production]
-    - [] Beta Release
-        - Goal: Feature-complete but needs polish
-        - Missing features:
-            - [] Feature X
-            - [] Feature Y
-            - [] Feature Z
-        - Active users: N/A
-        - Stability: [Assessment]
-    - [] Production Ready
-        - Goal: Stable, documented, tested
-        - Deployment status: [Not deployed | Staging | Production]
-        - Documentation: [Complete | In Progress | Needed]
-        - Tests: [Coverage percentage or status]
-    - [] Maintenance Mode
-        - Core complete and stable
-        - Nice-to-haves queued:
-            - Enhancement A
-            - Enhancement B
-            - Enhancement C
+            - textbox accepts only ASCII printable; no unicode input yet
+            - no scrolling for very long lists
 
 - Technical Details
     - Tech Stack:
-        - [List technologies, languages, frameworks]
+        - Python 3, stdlib curses
     - Key Files:
-        - [Important files and their purposes]
+        - picker: executable Python script
+        - readme.log: usage and rationale
     - Architecture Notes:
-        - [Key design decisions]
-        - [Patterns used]
-        - [Dependencies]
+        - dup2 dance: stdin/stdout get redirected to /dev/tty for the curses UI; the original stdout fd is restored before printing the result so $(picker ...) capture works
+        - --custom adds one extra row that, on Enter, becomes an inline editable field
 
 - Current Focus
     - Active Tasks:
-        - [] Task 1
-        - [] Task 2
+        - [] integrate into note.sh as the first real consumer
+        - [] decide install convention (symlink to ~/.local/bin vs PATH addition)
     - Blockers:
-        - [Any blocking issues]
+        - none
     - Recent Progress:
-        - YYYY-MM-DD: [What was accomplished]
-        - YYYY-MM-DD: [What was accomplished]
+        - 2026-05-05: initial picker script and docs
 
 - Notes
     - Use loglog format for all documentation
     - Update "Last Updated" date when making changes
-    - Run /home/k1/public/update_project_status.sh after updates
-    - Convert to markdown: loglog STATUS.log > STATUS.md

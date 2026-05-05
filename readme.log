@@ -1,0 +1,68 @@
+- terminal_picker_cc
+    - Status: 🔴 POC
+    - Mode: 🤖 Claude Code
+    - Updated: 2026-05-05
+
+- Overview
+    - A Claude-Code-style interactive picker for shell scripts.
+    - Shows a list of options with arrow-key navigation and an optional inline textbox for typing a custom value.
+    - Single-file Python script using stdlib curses, no third-party deps.
+
+- Why
+    - fzf is a fuzzy filter, not a list picker, and gum is an extra install.
+    - Claude Code's AskUserQuestion UI (arrow nav with an inline "Other" textbox) does not exist as a shell tool.
+    - This package reproduces that UX in a small reusable CLI.
+
+- Install
+    - Option 1: symlink onto your PATH
+        - ln -s /home/$USER/public/terminal_picker_cc/picker /home/$USER/.local/bin/picker
+    - Option 2: add this directory to PATH in your shell rc
+        - export PATH="$PATH:/home/$USER/public/terminal_picker_cc"
+    - Option 3: call it by absolute path from your scripts
+        - /home/$USER/public/terminal_picker_cc/picker --custom foo bar
+
+- Usage
+    - picker [--header TEXT] [--custom] [--custom-label TEXT] [--default N] [--marker STR] [ITEM ...]
+    - Items can be passed as args or piped on stdin (one per line).
+    - Selection is printed to stdout. Cancel (Esc / Ctrl+C) exits with code 130.
+    - Flags
+        - --header TEXT: bold header above the list, supports newlines
+        - --custom: append an entry whose label is "Type a new name..." that expands to an inline textbox when selected
+        - --custom-label TEXT: change that entry's label
+        - --default N: which option starts highlighted (0-based, default 0)
+        - --marker STR: prefix shown next to the highlighted line (default "> ")
+
+- Keybindings
+    - up / k: move highlight up (wraps)
+    - down / j: move highlight down (wraps)
+    - enter: select the highlighted option (or, on the custom entry, switch to typing)
+    - while typing: enter confirms, esc cancels typing and returns to the list, backspace deletes
+    - esc / ctrl+c: cancel the picker (exit 130)
+
+- Examples
+    - Plain list from args
+        - choice=$(picker --header "Pick one" apple banana cherry)
+    - List from stdin
+        - choice=$(ls /etc | picker --header "Files in /etc")
+    - With a custom-input fallback
+        - folder=$(picker --header "Pick or type a folder" --custom drafts inbox archive)
+    - Detect custom vs listed value
+        - selection=$(picker --custom apple banana)
+        - case "$selection" in apple|banana) echo "picked from list" ;; "") echo "cancelled" ;; *) echo "typed: $selection" ;; esac
+
+- Implementation Notes
+    - Uses curses from the Python stdlib, so works on any system with python3.
+    - Reads keys and renders to /dev/tty so that the caller can capture stdout: selection=$(picker ...) works as expected.
+    - Stdin can carry the option list because it is consumed before /dev/tty is dup'd onto fd 0.
+
+- Files
+    - picker: the executable script
+    - readme.log: this file
+    - STATUS.log: project status
+    - CLAUDE.md: project conventions
+
+- Known Limitations
+    - No multi-select.
+    - No filter-as-you-type (intentional, this is a picker, not a fuzzy finder).
+    - The custom textbox slot is fixed at the end of the list.
+    - Only ASCII printable characters are accepted in the textbox.
