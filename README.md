@@ -2,7 +2,7 @@
 
 **Status**: 🔴 POC | **Mode**: 🤖 Claude Code | **Updated**: 2026-05-05
 
-A Claude-Code-style interactive picker for shell scripts. Shows a list of options with arrow-key navigation and an optional inline textbox for typing a custom value. Single-file Python script using stdlib `curses`, no third-party deps.
+A Claude-Code-style interactive picker for shell scripts. Shows a list of options with arrow-key navigation. With `--custom`, the last row is a live inline textbox: when focused, typing goes straight into it, no extra Enter required. Spaces and any printable ASCII are valid input. Single-file Python script using stdlib `curses`, no third-party deps.
 
 ## Why
 
@@ -35,8 +35,8 @@ Items can be passed as args or piped on stdin (one per line). Selection is print
 | Flag | Meaning |
 |------|---------|
 | `--header TEXT` | Bold header above the list, supports newlines |
-| `--custom` | Append an entry whose label is "Type a new name..." that expands to an inline textbox when selected |
-| `--custom-label TEXT` | Change that entry's label |
+| `--custom` | Append an inline textbox row that accepts typed input the moment it is focused |
+| `--custom-label TEXT` | Placeholder shown in the textbox when empty and unfocused |
 | `--default N` | Which option starts highlighted, 0-based, default 0 |
 | `--marker STR` | Prefix shown next to the highlighted line, default `> ` |
 
@@ -44,12 +44,11 @@ Items can be passed as args or piped on stdin (one per line). Selection is print
 
 | Key | Action |
 |-----|--------|
-| up / k | Move highlight up, wraps |
-| down / j | Move highlight down, wraps |
-| enter | Select the highlighted option, or on the custom entry, switch to typing |
-| enter while typing | Confirm typed value |
-| esc while typing | Cancel typing, return to list |
-| backspace while typing | Delete a character |
+| up / down | Move highlight, wraps |
+| k / j | Same as up / down, but only when not on the textbox row (so j and k can be typed) |
+| enter | Confirm the highlighted option, or return the typed value when the textbox is focused and non-empty |
+| any printable key (textbox focused) | Append to the textbox buffer (space included) |
+| backspace (textbox focused) | Delete a character |
 | esc / ctrl+c | Cancel the picker, exit 130 |
 
 ## Examples
@@ -90,5 +89,5 @@ esac
 
 - No multi-select.
 - No filter-as-you-type, intentional, this is a picker, not a fuzzy finder.
-- The custom textbox slot is fixed at the end of the list.
-- Only ASCII printable characters are accepted in the textbox.
+- The textbox slot is fixed at the end of the list.
+- Only ASCII printable characters (including space) are accepted in the textbox; no unicode input.

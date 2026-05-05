@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Interactive list picker with optional inline textbox.
+"""Interactive list picker with an inline textbox slot.
 
 Usage:
     picker [--header TEXT] [--custom] [--custom-label TEXT]
            [--default N] [--marker STR] [ITEM ...]
 
 If no ITEMs are given, picker reads them from stdin (one per line).
-With --custom, an extra entry is appended; selecting it turns that line
-into an editable text field, Enter returns the typed value.
+With --custom, an extra textbox row is appended; whenever it is focused,
+it accepts typed input directly. Enter confirms the typed value.
 
 Output:
     Prints the selection (or typed value) to stdout. Exits 130 on cancel.
@@ -19,7 +19,7 @@ import os
 import sys
 
 
-def render(stdscr, header, items, selected, custom_idx, editing, buf, marker):
+def render(stdscr, header, items, selected, custom_idx, buf, custom_label, marker):
     stdscr.erase()
     h, w = stdscr.getmaxyx()
     row = 0
@@ -38,16 +38,29 @@ def render(stdscr, header, items, selected, custom_idx, editing, buf, marker):
 
     for i, item in enumerate(items):
         is_sel = (i == selected)
+        is_custom = (i == custom_idx)
         prefix = marker if is_sel else pad
-        text = buf if (i == custom_idx and editing) else item
+
+        if is_custom:
+            if is_sel:
+                text = buf
+                attr = curses.A_BOLD
+                cursor_pos = (row, min(len(prefix) + len(buf), w - 1))
+            elif buf:
+                text = buf
+                attr = 0
+            else:
+                text = custom_label
+                attr = curses.A_DIM
+        else:
+            text = item
+            attr = curses.A_BOLD if is_sel else 0
+
         line = prefix + text
-        attr = curses.A_BOLD if is_sel else 0
         try:
             stdscr.addnstr(row, 0, line, w - 1, attr)
         except curses.error:
             pass
-        if i == custom_idx and editing:
-            cursor_pos = (row, min(len(prefix) + len(buf), w - 1))
         row += 1
 
     if cursor_pos:
@@ -65,62 +78,57 @@ def render(stdscr, header, items, selected, custom_idx, editing, buf, marker):
     stdscr.refresh()
 
 
-def picker_loop(stdscr, header, items, custom_idx, default, marker):
+def picker_loop(stdscr, header, items, custom_idx, default, marker, custom_label):
     stdscr.keypad(True)
     selected = default
-    editing = False
     buf = ""
 
     while True:
-        render(stdscr, header, items, selected, custom_idx, editing, buf, marker)
+        render(stdscr, header, items, selected, custom_idx, buf, custom_label, marker)
         ch = stdscr.getch()
 
-        if editing:
-            if ch in (curses.KEY_ENTER, 10, 13):
+        on_custom = (selected == custom_idx)
+
+        if ch == curses.KEY_UP:
+            selected = (selected - 1) % len(items)
+        elif ch == curses.KEY_DOWN:
+            selected = (selected + 1) % len(items)
+        elif ch in (curses.KEY_ENTER, 10, 13):
+            if on_custom:
                 if buf.strip():
                     return buf
-                editing = False
-                buf = ""
-            elif ch == 27:
-                editing = False
-                buf = ""
-            elif ch in (curses.KEY_BACKSPACE, 127, 8):
+            else:
+                return items[selected]
+        elif ch in (3, 27):
+            return None
+        elif ch == curses.KEY_RESIZE:
+            continue
+        elif on_custom:
+            if ch in (curses.KEY_BACKSPACE, 127, 8):
                 buf = buf[:-1]
-            elif ch == curses.KEY_RESIZE:
-                continue
             elif 32 <= ch < 127:
                 buf += chr(ch)
         else:
-            if ch in (curses.KEY_UP, ord("k")):
+            if ch == ord("k"):
                 selected = (selected - 1) % len(items)
-            elif ch in (curses.KEY_DOWN, ord("j")):
+            elif ch == ord("j"):
                 selected = (selected + 1) % len(items)
-            elif ch in (curses.KEY_ENTER, 10, 13):
-                if selected == custom_idx:
-                    editing = True
-                    buf = ""
-                else:
-                    return items[selected]
-            elif ch in (3, 27):
-                return None
-            elif ch == curses.KEY_RESIZE:
-                continue
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Interactive list picker with optional inline textbox."
+        description="Interactive list picker with an inline textbox slot."
     )
     parser.add_argument("--header", default="", help="Header text shown above the list")
     parser.add_argument(
         "--custom",
         action="store_true",
-        help="Append a 'type your own' entry that expands to a textbox",
+        help="Append an inline textbox row that accepts typed input when focused",
     )
     parser.add_argument(
         "--custom-label",
         default="Type a new name...",
-        help="Label for the custom-input entry",
+        help="Placeholder text shown in the textbox when empty and unfocused",
     )
     parser.add_argument(
         "--default",
@@ -166,7 +174,13 @@ def main():
 
     try:
         result = curses.wrapper(
-            picker_loop, args.header, items, custom_idx, default, args.marker
+            picker_loop,
+            args.header,
+            items,
+            custom_idx,
+            default,
+            args.marker,
+            args.custom_label,
         )
     finally:
         os.dup2(real_stdout_fd, 1)

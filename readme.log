@@ -5,8 +5,9 @@
 
 - Overview
     - A Claude-Code-style interactive picker for shell scripts.
-    - Shows a list of options with arrow-key navigation and an optional inline textbox for typing a custom value.
+    - Shows a list of options with arrow-key navigation. With --custom, the last row is a live inline textbox: when focused, typing goes straight into it, no extra Enter to enter "edit mode".
     - Single-file Python script using stdlib curses, no third-party deps.
+    - Spaces (and any printable ASCII) are valid input in the textbox.
 
 - Why
     - fzf is a fuzzy filter, not a list picker, and gum is an extra install.
@@ -27,16 +28,16 @@
     - Selection is printed to stdout. Cancel (Esc / Ctrl+C) exits with code 130.
     - Flags
         - --header TEXT: bold header above the list, supports newlines
-        - --custom: append an entry whose label is "Type a new name..." that expands to an inline textbox when selected
-        - --custom-label TEXT: change that entry's label
+        - --custom: append an inline textbox row that accepts typed input the moment it is focused
+        - --custom-label TEXT: placeholder text shown in the textbox when empty and unfocused
         - --default N: which option starts highlighted (0-based, default 0)
         - --marker STR: prefix shown next to the highlighted line (default "> ")
 
 - Keybindings
-    - up / k: move highlight up (wraps)
-    - down / j: move highlight down (wraps)
-    - enter: select the highlighted option (or, on the custom entry, switch to typing)
-    - while typing: enter confirms, esc cancels typing and returns to the list, backspace deletes
+    - up / down: move highlight (wraps)
+    - k / j: same as up / down, but only when not focused on the textbox slot (so j and k can be typed into the textbox)
+    - enter: confirm the highlighted option, or, when on the textbox with non-empty content, return what was typed
+    - on textbox: any printable ASCII (including space) is appended; backspace deletes; the buffer is preserved if you arrow away and come back
     - esc / ctrl+c: cancel the picker (exit 130)
 
 - Examples
@@ -64,5 +65,5 @@
 - Known Limitations
     - No multi-select.
     - No filter-as-you-type (intentional, this is a picker, not a fuzzy finder).
-    - The custom textbox slot is fixed at the end of the list.
-    - Only ASCII printable characters are accepted in the textbox.
+    - The textbox slot is fixed at the end of the list.
+    - Only ASCII printable characters (including space) are accepted in the textbox; no unicode input.
