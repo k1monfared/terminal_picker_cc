@@ -1,8 +1,8 @@
 # terminal_picker_cc
 
-**Status**: 🔴 POC | **Mode**: 🤖 Claude Code | **Updated**: 2026-05-05
+**Status**: 🟡 MVP | **Mode**: 🤖 Claude Code | **Updated**: 2026-10-08
 
-A Claude-Code-style interactive picker for shell scripts. Shows a list of options with arrow-key navigation. With `--custom`, the last row is a live inline textbox: when focused, typing goes straight into it, no extra Enter required. Spaces and any printable ASCII are valid input. Single-file Python script using stdlib `curses`, no third-party deps.
+A Claude-Code-style interactive picker for shell scripts. Shows a list of options with arrow-key navigation. With `--custom`, an inline textbox row is added (last row by default, first with `--custom-first`): when focused, typing goes straight into it, no extra Enter required. Options can carry a separate display string (`VALUE<TAB>DISPLAY`) with light color/attribute markup, so lists render as colored tables while still returning a clean value. Spaces and any printable ASCII are valid input. Single-file Python script using stdlib `curses`, no third-party deps.
 
 ## Why
 
@@ -26,7 +26,7 @@ export PATH="$PATH:$HOME/public/terminal_picker_cc"
 ## Usage
 
 ```
-picker [--header TEXT] [--custom] [--custom-label TEXT]
+picker [--header TEXT] [--custom] [--custom-first] [--custom-label TEXT]
        [--default N] [--marker STR] [ITEM ...]
 ```
 
@@ -35,10 +35,27 @@ Items can be passed as args or piped on stdin (one per line). Selection is print
 | Flag | Meaning |
 |------|---------|
 | `--header TEXT` | Bold header above the list, supports newlines |
-| `--custom` | Append an inline textbox row that accepts typed input the moment it is focused |
-| `--custom-label TEXT` | Placeholder shown in the textbox when empty and unfocused |
+| `--custom` | Add an inline textbox row that accepts typed input the moment it is focused |
+| `--custom-first` | Place the textbox row at the top instead of the bottom |
+| `--custom-label TEXT` | Placeholder shown in the textbox when empty and unfocused (supports markup) |
 | `--default N` | Which option starts highlighted, 0-based, default 0 |
 | `--marker STR` | Prefix shown next to the highlighted line, default `> ` |
+
+### Item format
+
+| Form | Meaning |
+|------|---------|
+| `ITEM` | value and display are the same (backward compatible) |
+| `VALUE<TAB>DISPLAY` | `VALUE` is returned on select; `DISPLAY` is rendered with markup |
+
+### Colors and text attributes
+
+`DISPLAY` (and `--custom-label`) support `{token}` markup, `{/}` resets to normal.
+
+- Colors: `{black}` `{red}` `{green}` `{yellow}` `{blue}` `{magenta}` `{cyan}` `{white}`
+- Attributes: `{bold}` `{dim}` `{underline}` `{reverse}`
+
+Unknown tokens are shown literally. Color tokens are stripped when the terminal cannot do color. The selected row is shown bold, colors preserved.
 
 ## Keybindings
 
@@ -46,7 +63,7 @@ Items can be passed as args or piped on stdin (one per line). Selection is print
 |-----|--------|
 | up / down | Move highlight, wraps |
 | k / j | Same as up / down, but only when not on the textbox row (so j and k can be typed) |
-| enter | Confirm the highlighted option, or return the typed value when the textbox is focused and non-empty |
+| enter | Confirm the highlighted option, or return the typed value when the textbox is focused and non-empty; enter on an empty textbox does nothing |
 | any printable key (textbox focused) | Append to the textbox buffer (space included) |
 | backspace (textbox focused) | Delete a character |
 | esc / ctrl+c | Cancel the picker, exit 130 |
@@ -62,6 +79,11 @@ choice=$(ls /etc | picker --header "Files in /etc")
 
 # With a custom-input fallback
 folder=$(picker --header "Pick or type a folder" --custom drafts inbox archive)
+
+# Type-to-create first, colored table (value<TAB>display)
+picker --custom --custom-first --custom-label "{green}+{/}  {dim}new name...{/}" \
+    "dev\t{cyan}●{/}  dev   2 windows  {yellow}(attached){/}" \
+    "notes"
 
 # Detect custom vs listed value
 selection=$(picker --custom apple banana)
@@ -85,9 +107,14 @@ esac
 - `STATUS.log`: project status
 - `CLAUDE.md`: project conventions
 
+## Consumers
+
+`tmux_setting` uses it for the tmux session picker (`bin/tm-picker`, `bin/tm-login`): a colored table with a type-to-create row first. `tm-picker` falls back to a plain-text chooser when the picker is absent.
+
 ## Known Limitations
 
 - No multi-select.
 - No filter-as-you-type, intentional, this is a picker, not a fuzzy finder.
-- The textbox slot is fixed at the end of the list.
+- The textbox slot is at the end by default, or first with `--custom-first`.
 - Only ASCII printable characters (including space) are accepted in the textbox; no unicode input.
+- No scrolling for very long lists.

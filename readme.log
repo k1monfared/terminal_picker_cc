@@ -1,18 +1,20 @@
 - terminal_picker_cc
-    - Status: 🔴 POC
+    - Status: 🟡 MVP
     - Mode: 🤖 Claude Code
-    - Updated: 2026-05-05
+    - Updated: 2026-10-08
 
 - Overview
     - A Claude-Code-style interactive picker for shell scripts.
-    - Shows a list of options with arrow-key navigation. With --custom, the last row is a live inline textbox: when focused, typing goes straight into it, no extra Enter to enter "edit mode".
+    - Shows a list of options with arrow-key navigation. With --custom, an inline textbox row is added: when focused, typing goes straight into it, no extra Enter to enter "edit mode".
+    - The textbox is the last row by default, or the first row with --custom-first.
+    - Options can carry a separate display string (VALUE<TAB>DISPLAY) with light inline color/attribute markup, so lists can render as colored tables (e.g. icons, aligned columns, a status tag) while still returning a clean value.
     - Single-file Python script using stdlib curses, no third-party deps.
     - Spaces (and any printable ASCII) are valid input in the textbox.
 
 - Why
     - fzf is a fuzzy filter, not a list picker, and gum is an extra install.
     - Claude Code's AskUserQuestion UI (arrow nav with an inline "Other" textbox) does not exist as a shell tool.
-    - This package reproduces that UX in a small reusable CLI.
+    - This package reproduces that UX in a small reusable CLI, now with enough styling to stand in for fzf-as-list-picker.
 
 - Install
     - Option 1: symlink onto your PATH
@@ -23,20 +25,33 @@
         - /home/$USER/public/terminal_picker_cc/picker --custom foo bar
 
 - Usage
-    - picker [--header TEXT] [--custom] [--custom-label TEXT] [--default N] [--marker STR] [ITEM ...]
+    - picker [--header TEXT] [--custom] [--custom-first] [--custom-label TEXT] [--default N] [--marker STR] [ITEM ...]
     - Items can be passed as args or piped on stdin (one per line).
     - Selection is printed to stdout. Cancel (Esc / Ctrl+C) exits with code 130.
     - Flags
         - --header TEXT: bold header above the list, supports newlines
-        - --custom: append an inline textbox row that accepts typed input the moment it is focused
-        - --custom-label TEXT: placeholder text shown in the textbox when empty and unfocused
+        - --custom: add an inline textbox row that accepts typed input the moment it is focused
+        - --custom-first: place the textbox row at the top instead of the bottom
+        - --custom-label TEXT: placeholder shown in the textbox when empty and unfocused (supports markup)
         - --default N: which option starts highlighted (0-based, default 0)
         - --marker STR: prefix shown next to the highlighted line (default "> ")
+
+- Item format
+    - ITEM: value and display are the same (backward compatible)
+    - VALUE<TAB>DISPLAY: VALUE is returned on select; DISPLAY is rendered, with markup
+    - Example: "dev\t{cyan}●{/}  dev                  2 windows  {yellow}(attached){/}"
+
+- Colors and text attributes
+    - DISPLAY supports {token} markup. {/} resets to normal.
+    - Colors: {black} {red} {green} {yellow} {blue} {magenta} {cyan} {white}
+    - Attributes: {bold} {dim} {underline} {reverse}
+    - Unknown tokens are shown literally. Color tokens are stripped when the terminal cannot do color.
+    - The selected row is shown bold; colors are preserved.
 
 - Keybindings
     - up / down: move highlight (wraps)
     - k / j: same as up / down, but only when not focused on the textbox slot (so j and k can be typed into the textbox)
-    - enter: confirm the highlighted option, or, when on the textbox with non-empty content, return what was typed
+    - enter: confirm the highlighted option, or, when on the textbox with non-empty content, return what was typed; enter on an empty textbox does nothing
     - on textbox: any printable ASCII (including space) is appended; backspace deletes; the buffer is preserved if you arrow away and come back
     - esc / ctrl+c: cancel the picker (exit 130)
 
@@ -47,6 +62,9 @@
         - choice=$(ls /etc | picker --header "Files in /etc")
     - With a custom-input fallback
         - folder=$(picker --header "Pick or type a folder" --custom drafts inbox archive)
+    - Type-to-create first, colored table
+        - picker --custom --custom-first --custom-label "{green}+{/}  {dim}new name...{/}" \
+              "dev\t{cyan}●{/}  dev   2 windows  {yellow}(attached){/}" "notes"
     - Detect custom vs listed value
         - selection=$(picker --custom apple banana)
         - case "$selection" in apple|banana) echo "picked from list" ;; "") echo "cancelled" ;; *) echo "typed: $selection" ;; esac
@@ -55,6 +73,7 @@
     - Uses curses from the Python stdlib, so works on any system with python3.
     - Reads keys and renders to /dev/tty so that the caller can capture stdout: selection=$(picker ...) works as expected.
     - Stdin can carry the option list because it is consumed before /dev/tty is dup'd onto fd 0.
+    - init_colors builds a color pair per named color using use_default_colors when available; parse_segments turns markup into (chunk, attr) runs that render blits left to right with width clipping.
 
 - Files
     - picker: the executable script
@@ -62,8 +81,11 @@
     - STATUS.log: project status
     - CLAUDE.md: project conventions
 
+- Consumers
+    - tmux_setting: bin/tm-picker and bin/tm-login use it for the tmux session picker (colored table with a type-to-create row first). tm-picker falls back to a plain-text chooser if the picker is absent.
+
 - Known Limitations
     - No multi-select.
     - No filter-as-you-type (intentional, this is a picker, not a fuzzy finder).
-    - The textbox slot is fixed at the end of the list.
     - Only ASCII printable characters (including space) are accepted in the textbox; no unicode input.
+    - No scrolling for very long lists.

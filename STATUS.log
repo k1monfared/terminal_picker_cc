@@ -1,8 +1,8 @@
 - Project Status
-    - Last Updated: 2026-05-05
+    - Last Updated: 2026-10-08
     - Development Mode: Claude Code
-    - Stage: POC
-    - Next Milestone: dogfood from note.sh, fix any UX rough edges
+    - Stage: MVP
+    - Next Milestone: widen use beyond the tmux picker; fix any UX rough edges
 
 - Development Stages
     - [x] Initial Setup
@@ -22,8 +22,10 @@
         - Core features:
             - [x] picker reads items from args or stdin
             - [x] --custom flag adds an inline textbox option
-            - [] used in note.sh end-to-end
-            - [] header supports color or theming
+            - [x] --custom-first places the textbox row first (type-to-create)
+            - [x] VALUE<TAB>DISPLAY items with {color}/{attr} markup for colored tables
+            - [x] header supports color or theming
+            - [x] used as the tmux session picker (tmux_setting tm-picker / tm-login)
         - Known issues:
             - textbox accepts only ASCII printable; no unicode input yet
             - no scrolling for very long lists
@@ -46,6 +48,9 @@
         - none
     - Recent Progress:
         - 2026-05-05: initial picker script and docs
+        - 2026-10-08: added VALUE<TAB>DISPLAY items and {color}/{attr} markup
+        - 2026-10-08: added --custom-first and empty-textbox Enter no-op
+        - 2026-10-08: adopted as the tmux session picker, replacing fzf
 
 - Notes
     - Use loglog format for all documentation

@@ -2,12 +2,24 @@
 """Interactive list picker with an inline textbox slot.
 
 Usage:
-    picker [--header TEXT] [--custom] [--custom-label TEXT]
+    picker [--header TEXT] [--custom] [--custom-first] [--custom-label TEXT]
            [--default N] [--marker STR] [ITEM ...]
 
 If no ITEMs are given, picker reads them from stdin (one per line).
-With --custom, an extra textbox row is appended; whenever it is focused,
-it accepts typed input directly. Enter confirms the typed value.
+With --custom, an extra textbox row is added; whenever it is focused,
+it accepts typed input directly. Enter confirms the typed value. With
+--custom-first the textbox is placed at the top instead of the bottom.
+
+Item formats:
+    ITEM                 value and display are the same
+    VALUE<TAB>DISPLAY    VALUE is returned on select, DISPLAY is shown
+
+DISPLAY supports light inline color markup, e.g.:
+    {green}+{/}  {dim}new session name...{/}
+Known tokens: green cyan yellow red blue magenta black white, plus the
+attributes bold, dim, underline, reverse, and {/} to reset. Unknown
+tokens are shown literally. Tokens are stripped when the terminal has
+no color support.
 
 Output:
     Prints the selection (or typed value) to stdout. Exits 130 on cancel.
@@ -16,19 +28,112 @@ Output:
 import argparse
 import curses
 import os
+import re
 import sys
 
+COLOR_NAMES = {
+    "black": curses.COLOR_BLACK,
+    "red": curses.COLOR_RED,
+    "green": curses.COLOR_GREEN,
+    "yellow": curses.COLOR_YELLOW,
+    "blue": curses.COLOR_BLUE,
+    "magenta": curses.COLOR_MAGENTA,
+    "cyan": curses.COLOR_CYAN,
+    "white": curses.COLOR_WHITE,
+}
+ATTR_NAMES = {
+    "bold": curses.A_BOLD,
+    "dim": curses.A_DIM,
+    "underline": curses.A_UNDERLINE,
+    "reverse": curses.A_REVERSE,
+}
 
-def render(stdscr, header, items, selected, custom_idx, buf, custom_label, marker):
+TOKEN_RE = re.compile(r"\{([A-Za-z/]+)\}")
+
+
+def init_colors():
+    """Return a name -> color-pair-number map (empty when unsupported)."""
+    pairs = {}
+    if not curses.has_colors():
+        return pairs
+    try:
+        curses.start_color()
+    except curses.error:
+        return pairs
+    bg = curses.COLOR_BLACK
+    try:
+        curses.use_default_colors()
+        bg = -1
+    except curses.error:
+        pass
+    n = 0
+    for name, fg in COLOR_NAMES.items():
+        n += 1
+        try:
+            curses.init_pair(n, fg, bg)
+            pairs[name] = curses.color_pair(n)
+        except curses.error:
+            pass
+    return pairs
+
+
+def parse_segments(text, pairs, selected):
+    """Split display markup into (chunk, attr) segments.
+
+    Color tokens set the color pair; attribute tokens OR in an attribute;
+    {/} resets to normal. Unknown tokens are emitted as literal text.
+    """
+    segs = []
+    attr = 0
+    pos = 0
+    for m in TOKEN_RE.finditer(text):
+        if m.start() > pos:
+            segs.append((text[pos:m.start()], attr))
+        tok = m.group(1).lower()
+        if tok == "/":
+            attr = 0
+        elif tok in COLOR_NAMES:
+            if tok in pairs:
+                attr = pairs[tok]
+        elif tok in ATTR_NAMES:
+            attr |= ATTR_NAMES[tok]
+        else:
+            segs.append((m.group(0), attr))
+        pos = m.end()
+    if pos < len(text):
+        segs.append((text[pos:], attr))
+    if selected:
+        segs = [(chunk, a | curses.A_BOLD) for chunk, a in segs]
+    return segs
+
+
+def put_segments(stdscr, row, col, segs, maxw):
+    """Draw segments left to right, clipped at maxw. Returns the end column."""
+    x = col
+    for text, attr in segs:
+        if x >= maxw:
+            break
+        chunk = text[: maxw - x]
+        try:
+            stdscr.addstr(row, x, chunk, attr)
+        except Exception:
+            pass
+        x += len(chunk)
+    return x
+
+
+def render(stdscr, header, values, displays, selected, custom_idx, buf,
+           custom_label, marker, pairs):
     stdscr.erase()
     h, w = stdscr.getmaxyx()
+    maxw = w - 1
     row = 0
 
     if header:
         for line in header.split("\n"):
             try:
-                stdscr.addnstr(row, 0, line, w - 1, curses.A_BOLD)
-            except curses.error:
+                stdscr.addstr(row, 0, line[:maxw], curses.A_BOLD)
+            except Exception:
                 pass
             row += 1
         row += 1
@@ -36,69 +141,65 @@ def render(stdscr, header, items, selected, custom_idx, buf, custom_label, marke
     pad = " " * len(marker)
     cursor_pos = None
 
-    for i, item in enumerate(items):
+    for i in range(len(values)):
         is_sel = (i == selected)
         is_custom = (i == custom_idx)
         prefix = marker if is_sel else pad
+        prefix_attr = curses.A_BOLD if is_sel else 0
 
         if is_custom:
-            if is_sel:
-                text = buf
-                attr = curses.A_BOLD
-                cursor_pos = (row, min(len(prefix) + len(buf), w - 1))
-            elif buf:
-                text = buf
-                attr = 0
+            if buf:
+                segs = [(buf, curses.A_BOLD if is_sel else 0)]
             else:
-                text = custom_label
-                attr = curses.A_DIM
+                segs = parse_segments(custom_label, pairs, is_sel)
+            if is_sel:
+                cursor_pos = (row, min(len(prefix) + len(buf), maxw))
         else:
-            text = item
-            attr = curses.A_BOLD if is_sel else 0
+            segs = parse_segments(displays[i], pairs, is_sel)
 
-        line = prefix + text
-        try:
-            stdscr.addnstr(row, 0, line, w - 1, attr)
-        except curses.error:
-            pass
+        x = put_segments(stdscr, row, 0, [(prefix, prefix_attr)], maxw)
+        put_segments(stdscr, row, x, segs, maxw)
         row += 1
 
     if cursor_pos:
         try:
             stdscr.move(*cursor_pos)
             curses.curs_set(1)
-        except curses.error:
+        except Exception:
             pass
     else:
         try:
             curses.curs_set(0)
-        except curses.error:
+        except Exception:
             pass
 
     stdscr.refresh()
 
 
-def picker_loop(stdscr, header, items, custom_idx, default, marker, custom_label):
+def picker_loop(stdscr, header, values, displays, custom_idx, default, marker,
+                custom_label):
     stdscr.keypad(True)
+    pairs = init_colors()
     selected = default
     buf = ""
 
     while True:
-        render(stdscr, header, items, selected, custom_idx, buf, custom_label, marker)
+        render(stdscr, header, values, displays, selected, custom_idx, buf,
+               custom_label, marker, pairs)
         ch = stdscr.getch()
 
         on_custom = (selected == custom_idx)
 
         if ch == curses.KEY_UP:
-            selected = (selected - 1) % len(items)
+            selected = (selected - 1) % len(values)
         elif ch == curses.KEY_DOWN:
-            selected = (selected + 1) % len(items)
+            selected = (selected + 1) % len(values)
         elif ch in (curses.KEY_ENTER, 10, 13):
             if on_custom:
                 if buf.strip():
                     return buf
             else:
-                return items[selected]
+                return values[selected]
         elif ch in (3, 27):
             return None
         elif ch == curses.KEY_RESIZE:
@@ -110,9 +211,21 @@ def picker_loop(stdscr, header, items, custom_idx, default, marker, custom_label
                 buf += chr(ch)
         else:
             if ch == ord("k"):
-                selected = (selected - 1) % len(items)
+                selected = (selected - 1) % len(values)
             elif ch == ord("j"):
-                selected = (selected + 1) % len(items)
+                selected = (selected + 1) % len(values)
+
+
+def parse_items(raw):
+    """Split each raw item into (value, display) on the first tab."""
+    parsed = []
+    for item in raw:
+        if "\t" in item:
+            value, display = item.split("\t", 1)
+        else:
+            value = display = item
+        parsed.append((value, display))
+    return parsed
 
 
 def main():
@@ -123,12 +236,17 @@ def main():
     parser.add_argument(
         "--custom",
         action="store_true",
-        help="Append an inline textbox row that accepts typed input when focused",
+        help="Add an inline textbox row that accepts typed input when focused",
+    )
+    parser.add_argument(
+        "--custom-first",
+        action="store_true",
+        help="Place the textbox row at the top instead of the bottom",
     )
     parser.add_argument(
         "--custom-label",
         default="Type a new name...",
-        help="Placeholder text shown in the textbox when empty and unfocused",
+        help="Placeholder text shown in the textbox when empty (supports markup)",
     )
     parser.add_argument(
         "--default",
@@ -148,19 +266,28 @@ def main():
     )
     args = parser.parse_args()
 
-    items = list(args.items)
-    if not items and not sys.stdin.isatty():
-        items = [line.rstrip("\n") for line in sys.stdin if line.strip()]
+    raw = list(args.items)
+    if not raw and not sys.stdin.isatty():
+        raw = [line.rstrip("\n") for line in sys.stdin if line.strip()]
 
-    if args.custom:
-        items.append(args.custom_label)
+    parsed = parse_items(raw)
 
-    if not items:
+    if args.custom and args.custom_first:
+        parsed.insert(0, (None, None))
+        custom_idx = 0
+    elif args.custom:
+        parsed.append((None, None))
+        custom_idx = len(parsed) - 1
+    else:
+        custom_idx = -1
+
+    if not parsed:
         sys.stderr.write("picker: no options provided\n")
         sys.exit(2)
 
-    custom_idx = len(items) - 1 if args.custom else -1
-    default = max(0, min(args.default, len(items) - 1))
+    values = [p[0] for p in parsed]
+    displays = [p[1] for p in parsed]
+    default = max(0, min(args.default, len(parsed) - 1))
 
     real_stdout_fd = os.dup(1)
     try:
@@ -176,7 +303,8 @@ def main():
         result = curses.wrapper(
             picker_loop,
             args.header,
-            items,
+            values,
+            displays,
             custom_idx,
             default,
             args.marker,
